@@ -5,6 +5,7 @@ use terminal::{Clear, Action};
 use std::io::Write;
 
 use rand::Rng;
+use std::collections::LinkedList;
 
 fn print_usage() -> ! {
     println!("Usage");
@@ -24,6 +25,20 @@ fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
 const EMPTY: u8 = ' ' as u8;
 const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
+const HEAD: u8 = '@' as u8;
+const BODY: u8 = 'B' as u8;
+
+fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usize)>) {
+    let mut it = snake.into_iter();
+    if let Some((h, w)) = it.next() {
+        board[h * width + w] = HEAD;
+    } else {
+        panic!("Snake has no head!");
+    }
+    while let Some((h, w)) = it.next() {
+        board[h * width + w] = BODY;
+    }
+}
 
 fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     let num_free = board.into_iter().filter(|c| -> bool {c == &&EMPTY}).count();
@@ -54,7 +69,8 @@ fn main() {
     let board_size = board_height * board_width;
 
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_size);
-    let mut food: (usize, usize);
+    let food: (usize, usize);
+    let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
 
     board.resize(board_size, EMPTY);
 
@@ -73,6 +89,9 @@ fn main() {
         board[h * board_width + width + 2] = '\n' as u8;
     }
 
+    snake.push_back((height / 2 + 1, width / 2 + 1));
+    draw_snake(&mut board, board_width, &snake);
+
     food = random_free_spot(&board, board_width);
     board[food.0 * board_width + food.1] = FOOD;
 
@@ -80,5 +99,5 @@ fn main() {
         std::process::exit(1);
     }
 
-
+    
 }
