@@ -1,6 +1,10 @@
 extern crate terminal;
+extern crate rand;
+
 use terminal::{Clear, Action};
 use std::io::Write;
+
+use rand::Rng;
 
 fn print_usage() -> ! {
     println!("Usage");
@@ -19,6 +23,23 @@ fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
 
 const EMPTY: u8 = ' ' as u8;
 const BORDER: u8 = '#' as u8;
+const FOOD: u8 = 'F' as u8;
+
+fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
+    let num_free = board.into_iter().filter(|c| -> bool {c == &&EMPTY}).count();
+    let nth_free_i = rand::thread_rng().gen_range(0, num_free);
+    let mut free_cnt = 0;
+    for i in 0..board.len() {
+        if board[i] == EMPTY {
+            if free_cnt == nth_free_i {
+                return (i / width, i % width)
+            } else {
+                free_cnt += 1;
+            }
+        }
+    }
+    panic!("How did I get here?");
+}
 
 fn main() {
     if std::env::args().count() != 3 {
@@ -33,10 +54,11 @@ fn main() {
     let board_size = board_height * board_width;
 
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_size);
+    let mut food: (usize, usize);
+
     board.resize(board_size, EMPTY);
 
-
-    let mut terminal = terminal::stdout();
+    let mut term = terminal::stdout();
 
     // reset board
 
@@ -51,10 +73,12 @@ fn main() {
         board[h * board_width + width + 2] = '\n' as u8;
     }
 
-    if terminal.write(board.as_slice()).is_err() {
+    food = random_free_spot(&board, board_width);
+    board[food.0 * board_width + food.1] = FOOD;
+
+    if term.write(board.as_slice()).is_err() {
         std::process::exit(1);
     }
-
 
 
 }
