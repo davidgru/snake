@@ -1,12 +1,12 @@
 extern crate terminal;
 extern crate rand;
 
-use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
-use std::io::Write;
-use std::time::Duration;
-use rand::Rng;
 use std::collections::LinkedList;
-use std::time::Instant;
+use std::io::Write;
+use std::time::{Duration, Instant};
+
+use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
+use rand::Rng;
 
 
 
@@ -15,6 +15,24 @@ const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
+
+static USAGE: &str = "\
+USAGE: snake {width} {height} {step_frequency}
+PARAMS:
+    - {width}: the width of the board in cells
+    - {height}: the height of the board in cells
+    - {step_frequency}: the amount of steps the snake makes in one second
+CONTROL:
+    - Left-Key: steer left
+    - Right-Key: steer right
+    - 'q': quit
+";
+
+fn usage_and_exit() -> ! {
+    print!("{}", USAGE);
+    std::process::exit(1);
+}
+
 
 #[derive(PartialEq)]
 enum UserInput {
@@ -36,18 +54,13 @@ impl Direction {
     }
 }
 
-fn print_usage() -> ! {
-    println!("Usage");
-    std::process::exit(1);
-}
-
 fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
     match std::env::args().nth(nth) {
         Some(arg) => match arg.parse::<T>() {
             Ok(targ) => targ,
-            Err(_) => print_usage()
+            Err(_) => usage_and_exit()
         },
-        None => print_usage()
+        None => usage_and_exit()
     }
 }
 
@@ -187,9 +200,6 @@ fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
 
 
 fn main() {
-    if std::env::args().count() != 4 {
-        print_usage();
-    }
     let width: usize = parse_arg(1);
     let height: usize = parse_arg(2);
     let freq: i32 = parse_arg(3);
