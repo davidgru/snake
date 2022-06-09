@@ -7,7 +7,6 @@ use std::time::Duration;
 use rand::Rng;
 use std::collections::LinkedList;
 use std::time::Instant;
-use std::sync::{Arc, Mutex};
 
 
 const EMPTY: u8 = ' ' as u8;
@@ -115,13 +114,13 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     panic!("How did I get here?");
 }
 
-fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>) -> Option<UserInput> {
-    let now = std::time::Instant::now();
-    let deadline = now + Duration::from_secs(1);
+fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>, interval_us: u64) -> Option<UserInput> {
+    let now = Instant::now();
+    let deadline = now + Duration::from_micros(interval_us);
     
     let mut code: Option<UserInput> = None;
     loop {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(deadline - now))) {
             code = match key {
                 KeyEvent{code: KeyCode::Left, ..} => {
@@ -152,6 +151,13 @@ fn term_setup<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
     lock.flush_batch()
 }
 
+fn term_display<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &[u8]) -> error::Result<()> {
+    lock.act(Action::ClearTerminal(Clear::All))?;
+    lock.act(Action::MoveCursorTo(0, 0))?;
+    lock.write(board)?;
+    lock.flush_batch()
+}
+
 fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
     lock.batch(Action::ShowCursor)?;
     lock.batch(Action::DisableRawMode)?;
@@ -161,12 +167,13 @@ fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
 
 
 fn main() {
-    if std::env::args().count() != 3 {
+    if std::env::args().count() != 4 {
         print_usage();
     }
 
     let width: usize = parse_arg(1);
     let height: usize = parse_arg(2);
+    let freq: i32 = parse_arg(3);
 
     let board_size = board_height(height) * board_width(width);
 
@@ -187,9 +194,11 @@ fn main() {
     food = random_free_spot(&board, width);
     draw_food(&mut board, width, &food);
 
+    term_display(&mut lock, board.as_slice()).unwrap();
+
     loop {
         // user input
-        if let Some(user_input) = term_user_input(&lock) {
+        if let Some(user_input) = term_user_input(&lock, (60 * 1000 * 1000 / freq) as u64) {
             direction = match (user_input, direction) {
                 (UserInput::Right, (0, 1)) => (1, 0),
                 (UserInput::Right, (1, 0)) => (0, -1),
@@ -217,11 +226,7 @@ fn main() {
         draw_food(&mut board, width, &food);
 
         // display
-        if lock.act(Action::ClearTerminal(Clear::All)).is_err() ||
-            lock.act(Action::MoveCursorTo(0, 0)).is_err() ||
-            lock.write(board.as_slice()).is_err() {
-            std::process::exit(1);
-        }
+        term_display(&mut lock, board.as_slice()).unwrap();
 
         if crashed {
             break;
