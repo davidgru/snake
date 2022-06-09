@@ -1,11 +1,13 @@
 extern crate terminal;
 extern crate rand;
 
-use terminal::{Clear, Action};
+use terminal::{error, Clear, Action, Value, Retrieved, Event, Event::Key, KeyCode, KeyEvent};
 use std::io::Write;
-
+use std::time::Duration;
 use rand::Rng;
 use std::collections::LinkedList;
+use std::time::Instant;
+use std::sync::{Arc, Mutex};
 
 
 const EMPTY: u8 = ' ' as u8;
@@ -14,6 +16,10 @@ const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
 
+#[derive(PartialEq)]
+enum UserInput {
+    Left, Right, Exit
+}
 
 fn print_usage() -> ! {
     println!("Usage");
@@ -35,7 +41,7 @@ fn board_height(height: usize) -> usize {
 }
 
 fn board_width(width: usize) -> usize {
-    width + 3
+    width + 4
 }
 
 fn draw_border(board: &mut Vec<u8>, width: usize, height: usize) {
@@ -50,6 +56,7 @@ fn draw_border(board: &mut Vec<u8>, width: usize, height: usize) {
         board[h * board_width(width) + 0] = BORDER;
         board[h * board_width(width) + width + 1] = BORDER;
         board[h * board_width(width) + width + 2] = '\n' as u8;
+        board[h * board_width(width) + width + 3] = '\r' as u8;
     }
 }
 
@@ -65,10 +72,10 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
     }
 }
 
-fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &(usize, usize)) -> (bool, bool) {
+fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &(i32, i32)) -> (bool, bool) {
     if let Some((h, w)) = snake.front() {
-        let new_head_h = h + direction.0;
-        let new_head_w = w + direction.1;
+        let new_head_h = (*h as i32 + direction.0) as usize;
+        let new_head_w = (*w as i32 + direction.1) as usize;
 
         snake.push_front((new_head_h, new_head_w));
 
@@ -108,6 +115,51 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     panic!("How did I get here?");
 }
 
+fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>) -> Option<UserInput> {
+    let now = std::time::Instant::now();
+    let deadline = now + Duration::from_secs(1);
+    
+    let mut code: Option<UserInput> = None;
+    loop {
+        let now = std::time::Instant::now();
+        if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(deadline - now))) {
+            code = match key {
+                KeyEvent{code: KeyCode::Left, ..} => {
+                    Some(UserInput::Left)
+                },
+                KeyEvent{code: KeyCode::Right, ..} => {
+                    Some(UserInput::Right)
+                },
+                KeyEvent{code: KeyCode::Char('q'), ..} => {
+                    Some(UserInput::Exit)
+                },
+                _ => code
+            };
+            if code == Some(UserInput::Exit) {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    code
+}
+
+fn term_setup<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
+    lock.batch(Action::EnterAlternateScreen)?;
+    lock.batch(Action::EnableRawMode)?;
+    lock.batch(Action::HideCursor)?;
+    lock.flush_batch()
+}
+
+fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
+    lock.batch(Action::ShowCursor)?;
+    lock.batch(Action::DisableRawMode)?;
+    lock.batch(Action::LeaveAlternateScreen)?;
+    lock.flush_batch()
+}
+
+
 fn main() {
     if std::env::args().count() != 3 {
         print_usage();
@@ -118,13 +170,16 @@ fn main() {
 
     let board_size = board_height(height) * board_width(width);
 
-    let mut term = terminal::stdout();
+    let terminal = terminal::stdout();
+    let mut lock = terminal.lock_mut().unwrap();
+
+    term_setup(&mut lock).unwrap();
 
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_size);
 
     let mut food: (usize, usize);
     let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
-    let mut direction: (usize, usize) = (0, 1);
+    let mut direction: (i32, i32) = (0, 1);
 
     draw_border(&mut board, width, height);
     snake.push_back((height / 2 + 1, width / 2 + 1));
@@ -133,7 +188,24 @@ fn main() {
     draw_food(&mut board, width, &food);
 
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        // user input
+        if let Some(user_input) = term_user_input(&lock) {
+            direction = match (user_input, direction) {
+                (UserInput::Right, (0, 1)) => (1, 0),
+                (UserInput::Right, (1, 0)) => (0, -1),
+                (UserInput::Right, (0, -1)) => (-1, 0),
+                (UserInput::Right, (-1, 0)) => (0, 1),
+                (UserInput::Left, (0, 1)) => (-1, 0),
+                (UserInput::Left, (-1, 0)) => (0, -1),
+                (UserInput::Left, (0, -1)) => (1, 0),
+                (UserInput::Left, (1, 0)) => (0, 1),
+                (UserInput::Left, _) => (0, 0),
+                (_, _) => (0, 0)
+            };
+        }
+        if direction == (0, 0) {
+            break;
+        }
 
         let (eaten, crashed) = advance_snake(&mut board, width, &mut snake, &direction);
 
@@ -145,10 +217,9 @@ fn main() {
         draw_food(&mut board, width, &food);
 
         // display
-        if term.batch(Action::ClearTerminal(Clear::All)).is_err() ||
-            term.batch(Action::MoveCursorTo(0, 0)).is_err() ||
-            term.flush_batch().is_err() ||
-            term.write(board.as_slice()).is_err() {
+        if lock.act(Action::ClearTerminal(Clear::All)).is_err() ||
+            lock.act(Action::MoveCursorTo(0, 0)).is_err() ||
+            lock.write(board.as_slice()).is_err() {
             std::process::exit(1);
         }
 
@@ -157,4 +228,5 @@ fn main() {
         }
     }
 
+    term_clean(&mut lock).unwrap();
 }
