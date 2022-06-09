@@ -8,8 +8,7 @@ use std::time::{Duration, Instant};
 use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 use rand::Rng;
 
-
-
+// Display constants
 const EMPTY: u8 = ' ' as u8;
 const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
@@ -54,6 +53,7 @@ impl Direction {
     }
 }
 
+// parse nth argument from cmdline to specified type
 fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
     match std::env::args().nth(nth) {
         Some(arg) => match arg.parse::<T>() {
@@ -64,14 +64,17 @@ fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
     }
 }
 
+// height + space for border
 fn board_height(height: usize) -> usize {
     height + 2
 }
 
+// with + space for border and \n\r
 fn board_width(width: usize) -> usize {
     width + 4
 }
 
+// initialize the board and draw boarder and \n\r
 fn draw_border(board: &mut Vec<u8>, width: usize, height: usize) {
     board.clear();
     board.resize(board_height(height) * board_width(width), EMPTY);
@@ -104,6 +107,7 @@ fn draw_food(board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
     board[food.0 * board_width(width) + food.1] = FOOD;
 }
 
+// move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
 fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
     if let Some(&(h, w)) = snake.front() {
         let new_head_h = (h as i32 + direction.velocity().0) as usize;
@@ -131,6 +135,7 @@ fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usiz
     }
 }
 
+// find random free spot on the board in O(n) guaranteed
 fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     let num_free = board.into_iter().filter(|c| -> bool {c == &&EMPTY}).count();
     let nth_free_i = rand::thread_rng().gen_range(0, num_free);
@@ -147,6 +152,7 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     panic!("How did I get here?");
 }
 
+// listen for user input for an interval. return the last entered direction, or exit
 fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>, interval_us: u64) -> Option<UserInput> {
     let now = Instant::now();
     let deadline = now + Duration::from_micros(interval_us);
