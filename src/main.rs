@@ -25,12 +25,14 @@ enum Direction {
     Right, Up, Left, Down
 }
 
-fn direction_to_vel(direction: &Direction) -> (i32, i32) {
-    match direction {
-        Direction::Right => (0, 1),
-        Direction::Up => (-1, 0),
-        Direction::Left => (0, -1),
-        Direction::Down => (1, 0)
+impl Direction {
+    pub fn velocity(&self) -> (i32, i32) {
+        match *self {
+            Direction::Right => (0, 1),
+            Direction::Up => (-1, 0),
+            Direction::Left => (0, -1),
+            Direction::Down => (1, 0)
+        }
     }
 }
 
@@ -85,11 +87,14 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
     }
 }
 
+fn draw_food(board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
+    board[food.0 * board_width(width) + food.1] = FOOD;
+}
+
 fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
-    if let Some((h, w)) = snake.front() {
-        let vel = direction_to_vel(&direction);
-        let new_head_h = (*h as i32 + vel.0) as usize;
-        let new_head_w = (*w as i32 + vel.1) as usize;
+    if let Some(&(h, w)) = snake.front() {
+        let new_head_h = (h as i32 + direction.velocity().0) as usize;
+        let new_head_w = (w as i32 + direction.velocity().1) as usize;
 
         snake.push_front((new_head_h, new_head_w));
 
@@ -100,17 +105,17 @@ fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usiz
             EMPTY => (false, false),
             _ => panic!("Impossible")
         };
+        board[new_head_h * board_width(width) + new_head_w] = HEAD;
+        board[h * board_width(width) + w] = BODY;
         if !out.0 {
-            snake.pop_back();
+            if let Some((h, w)) = snake.pop_back() {
+                board[h * board_width(width) + w] = EMPTY;
+            }
         }
         out
     } else {
         panic!("Snake has no head!");
     }
-}
-
-fn draw_food(board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
-    board[food.0 * board_width(width) + food.1] = FOOD;
 }
 
 fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
@@ -120,7 +125,7 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     for i in 0..board.len() {
         if board[i] == EMPTY {
             if free_cnt == nth_free_i {
-                return (i / width, i % width)
+                return (i / board_width(width), i % board_width(width))
             } else {
                 free_cnt += 1;
             }
@@ -185,7 +190,6 @@ fn main() {
     if std::env::args().count() != 4 {
         print_usage();
     }
-
     let width: usize = parse_arg(1);
     let height: usize = parse_arg(2);
     let freq: i32 = parse_arg(3);
@@ -226,14 +230,13 @@ fn main() {
                 (UserInput::Exit, _) => break,
             };
         }
-        let (eaten, crashed) = advance_snake(&mut board, width, &mut snake, &direction);
 
-        draw_border(&mut board, width, height);
-        draw_snake(&mut board, width, &snake);
+        // step
+        let (eaten, crashed) = advance_snake(&mut board, width, &mut snake, &direction);
         if eaten {
             food = random_free_spot(&board, width);
+            draw_food(&mut board, width, &food);
         }
-        draw_food(&mut board, width, &food);
 
         // display
         term_display(&mut lock, board.as_slice()).unwrap();
