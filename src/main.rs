@@ -1,12 +1,13 @@
 extern crate terminal;
 extern crate rand;
 
-use terminal::{error, Clear, Action, Value, Retrieved, Event, Event::Key, KeyCode, KeyEvent};
+use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 use std::io::Write;
 use std::time::Duration;
 use rand::Rng;
 use std::collections::LinkedList;
 use std::time::Instant;
+
 
 
 const EMPTY: u8 = ' ' as u8;
@@ -18,6 +19,19 @@ const BODY: u8 = 'B' as u8;
 #[derive(PartialEq)]
 enum UserInput {
     Left, Right, Exit
+}
+
+enum Direction {
+    Right, Up, Left, Down
+}
+
+fn direction_to_vel(direction: &Direction) -> (i32, i32) {
+    match direction {
+        Direction::Right => (0, 1),
+        Direction::Up => (-1, 0),
+        Direction::Left => (0, -1),
+        Direction::Down => (1, 0)
+    }
 }
 
 fn print_usage() -> ! {
@@ -71,10 +85,11 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
     }
 }
 
-fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &(i32, i32)) -> (bool, bool) {
+fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
     if let Some((h, w)) = snake.front() {
-        let new_head_h = (*h as i32 + direction.0) as usize;
-        let new_head_w = (*w as i32 + direction.1) as usize;
+        let vel = direction_to_vel(&direction);
+        let new_head_h = (*h as i32 + vel.0) as usize;
+        let new_head_w = (*w as i32 + vel.1) as usize;
 
         snake.push_front((new_head_h, new_head_w));
 
@@ -186,7 +201,7 @@ fn main() {
 
     let mut food: (usize, usize);
     let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
-    let mut direction: (i32, i32) = (0, 1);
+    let mut direction = Direction::Right;
 
     draw_border(&mut board, width, height);
     snake.push_back((height / 2 + 1, width / 2 + 1));
@@ -198,24 +213,19 @@ fn main() {
 
     loop {
         // user input
-        if let Some(user_input) = term_user_input(&lock, (60 * 1000 * 1000 / freq) as u64) {
+        if let Some(user_input) = term_user_input(&lock, (1000 * 1000 / freq) as u64) {
             direction = match (user_input, direction) {
-                (UserInput::Right, (0, 1)) => (1, 0),
-                (UserInput::Right, (1, 0)) => (0, -1),
-                (UserInput::Right, (0, -1)) => (-1, 0),
-                (UserInput::Right, (-1, 0)) => (0, 1),
-                (UserInput::Left, (0, 1)) => (-1, 0),
-                (UserInput::Left, (-1, 0)) => (0, -1),
-                (UserInput::Left, (0, -1)) => (1, 0),
-                (UserInput::Left, (1, 0)) => (0, 1),
-                (UserInput::Left, _) => (0, 0),
-                (_, _) => (0, 0)
+                (UserInput::Right, Direction::Right) => Direction::Down,
+                (UserInput::Right, Direction::Down) => Direction::Left,
+                (UserInput::Right, Direction::Left) => Direction::Up,
+                (UserInput::Right, Direction::Up) => Direction::Right,
+                (UserInput::Left, Direction::Right) => Direction::Up,
+                (UserInput::Left, Direction::Up) => Direction::Left,
+                (UserInput::Left, Direction::Left) => Direction::Down,
+                (UserInput::Left, Direction::Down) => Direction::Right,
+                (UserInput::Exit, _) => break,
             };
         }
-        if direction == (0, 0) {
-            break;
-        }
-
         let (eaten, crashed) = advance_snake(&mut board, width, &mut snake, &direction);
 
         draw_border(&mut board, width, height);
