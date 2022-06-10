@@ -1,12 +1,24 @@
-extern crate terminal;
+extern crate clap;
 extern crate rand;
+extern crate terminal;
 
 use std::collections::LinkedList;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
+use clap::Parser;
 use rand::Rng;
+use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[clap(short = 'w', long = "width", help = "The width of the board")]
+    width: Option<usize>,
+    #[clap(short = 'h', long = "height", help = "The height of the board")]
+    height: Option<usize>,
+    #[clap(short = 'f', long = "frequency", help = "The amount of steps the snake makes per second")]
+    freq: Option<u64>
+}
 
 // Display constants
 const EMPTY: u8 = ' ' as u8;
@@ -15,7 +27,7 @@ const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
 
-static USAGE: &str = "\
+static _USAGE: &str = "\
 USAGE: snake {width} {height} {step_frequency}
 PARAMS:
     - {width}: the width of the board in cells
@@ -26,12 +38,6 @@ CONTROL:
     - Right-Key: steer right
     - 'q': quit
 ";
-
-fn usage_and_exit() -> ! {
-    print!("{}", USAGE);
-    std::process::exit(1);
-}
-
 
 #[derive(PartialEq)]
 enum UserInput {
@@ -50,17 +56,6 @@ impl Direction {
             Direction::Left => (0, -1),
             Direction::Down => (1, 0)
         }
-    }
-}
-
-// parse nth argument from cmdline to specified type
-fn parse_arg<T: std::str::FromStr>(nth: usize) -> T {
-    match std::env::args().nth(nth) {
-        Some(arg) => match arg.parse::<T>() {
-            Ok(targ) => targ,
-            Err(_) => usage_and_exit()
-        },
-        None => usage_and_exit()
     }
 }
 
@@ -190,6 +185,14 @@ fn term_setup<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
     lock.flush_batch()
 }
 
+fn term_get_size<T: std::io::Write>(lock: &terminal::TerminalLock<T>) -> Option<(usize, usize)> {
+    if let Ok(Retrieved::TerminalSize(w, h)) = lock.get(Value::TerminalSize) {
+        Some((w as usize, h as usize))
+    } else {
+        None
+    }
+}
+
 fn term_display<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &[u8]) -> error::Result<()> {
     lock.act(Action::ClearTerminal(Clear::All))?;
     lock.act(Action::MoveCursorTo(0, 0))?;
@@ -206,17 +209,19 @@ fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
 
 
 fn main() {
-    let width: usize = parse_arg(1);
-    let height: usize = parse_arg(2);
-    let freq: i32 = parse_arg(3);
-
-    let board_size = board_height(height) * board_width(width);
-
     let terminal = terminal::stdout();
     let mut lock = terminal.lock_mut().unwrap();
 
+    let args = Args::parse();
+
+    let width = args.width.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().0 - 2});
+    let height = args.height.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().1 - 3});
+    let freq = args.freq.unwrap_or_else(|| -> u64 {(std::cmp::min(width, height) / 4) as u64});
+
+
     term_setup(&mut lock).unwrap();
 
+    let board_size = board_height(height) * board_width(width);
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_size);
 
     let mut food: (usize, usize);
