@@ -12,9 +12,9 @@ use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent}
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[clap(short = 'w', long = "width", help = "The width of the board")]
+    #[clap(short = 'w', long = "width", help = "The width of the board (default is terminal width)")]
     width: Option<usize>,
-    #[clap(short = 'h', long = "height", help = "The height of the board")]
+    #[clap(short = 'h', long = "height", help = "The height of the board (default is terminal height)")]
     height: Option<usize>,
     #[clap(short = 'f', long = "frequency", help = "The amount of steps the snake makes per second")]
     freq: Option<u64>
@@ -26,18 +26,6 @@ const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
-
-static _USAGE: &str = "\
-USAGE: snake {width} {height} {step_frequency}
-PARAMS:
-    - {width}: the width of the board in cells
-    - {height}: the height of the board in cells
-    - {step_frequency}: the amount of steps the snake makes in one second
-CONTROL:
-    - Left-Key: steer left
-    - Right-Key: steer right
-    - 'q': quit
-";
 
 #[derive(PartialEq)]
 enum UserInput {
