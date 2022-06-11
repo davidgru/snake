@@ -46,7 +46,7 @@ fn board_height(height: usize) -> usize {
     height + 2
 }
 
-// with + space for border and \n\r
+// width + space for border and \n\r
 fn board_width(width: usize) -> usize {
     width + 4
 }
