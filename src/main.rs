@@ -86,12 +86,15 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
     }
 }
 
-fn draw_food(board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
+fn draw_food<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, food: &(usize, usize)) -> error::Result<()> {
+    lock.batch(Action::MoveCursorTo(food.1 as u16, food.0 as u16))?;
+    lock.write(&[FOOD])?;
     board[food.0 * board_width(width) + food.1] = FOOD;
+    lock.flush_batch()
 }
 
 // move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
-fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
+fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
     if let Some(&(h, w)) = snake.front() {
         let new_head_h = (h as i32 + direction.velocity().0) as usize;
         let new_head_w = (w as i32 + direction.velocity().1) as usize;
@@ -105,13 +108,20 @@ fn advance_snake(board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usiz
             EMPTY => (false, false),
             _ => panic!("Impossible")
         };
+        lock.batch(Action::MoveCursorTo(new_head_w as u16, new_head_h as u16)).unwrap();
+        lock.write(&[HEAD]).unwrap();
+        lock.batch(Action::MoveCursorTo(w as u16, h as u16)).unwrap();
+        lock.write(&[BODY]).unwrap();
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
         board[h * board_width(width) + w] = BODY;
         if !out.0 {
             if let Some((h, w)) = snake.pop_back() {
+                lock.batch(Action::MoveCursorTo(w as u16, h as u16)).unwrap();
+                lock.write(&[EMPTY]).unwrap();
                 board[h * board_width(width) + w] = EMPTY;
             }
         }
+        lock.flush_batch().unwrap();
         out
     } else {
         panic!("Snake has no head!");
@@ -217,12 +227,12 @@ fn main() {
     let mut direction = Direction::Right;
 
     draw_border(&mut board, width, height);
+    term_display(&mut lock, board.as_slice()).unwrap();
+    
     snake.push_back((height / 2 + 1, width / 2 + 1));
     draw_snake(&mut board, width, &snake);
     food = random_free_spot(&board, width);
-    draw_food(&mut board, width, &food);
-
-    term_display(&mut lock, board.as_slice()).unwrap();
+    draw_food(&mut lock, &mut board, width, &food).unwrap();
 
     loop {
         // user input
@@ -241,14 +251,14 @@ fn main() {
         }
 
         // step
-        let (eaten, crashed) = advance_snake(&mut board, width, &mut snake, &direction);
+        let (eaten, crashed) = advance_snake(&mut lock, &mut board, width, &mut snake, &direction);
         if eaten {
             food = random_free_spot(&board, width);
-            draw_food(&mut board, width, &food);
+            draw_food(&mut lock, &mut board, width, &food).unwrap();
         }
 
         // display
-        term_display(&mut lock, board.as_slice()).unwrap();
+        // term_display(&mut lock, board.as_slice()).unwrap();
 
         if crashed {
             break;
