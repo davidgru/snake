@@ -130,7 +130,7 @@ fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board:
 
 // find random free spot on the board in O(n) guaranteed
 fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
-    let num_free = board.into_iter().filter(|c| -> bool {c == &&EMPTY}).count();
+    let num_free = board.into_iter().filter(|c| -> bool {**c == EMPTY}).count();
     let nth_free_i = rand::thread_rng().gen_range(0, num_free);
     let mut free_cnt = 0;
     for i in 0..board.len() {
@@ -176,6 +176,7 @@ fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>, interval
     code
 }
 
+// enter new screen and hide cursor
 fn term_setup<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
     lock.batch(Action::EnterAlternateScreen)?;
     lock.batch(Action::EnableRawMode)?;
@@ -198,6 +199,7 @@ fn term_display<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: 
     lock.flush_batch()
 }
 
+// show cursor again and return to old screen
 fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
     lock.batch(Action::ShowCursor)?;
     lock.batch(Action::DisableRawMode)?;
@@ -205,37 +207,38 @@ fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error:
     lock.flush_batch()
 }
 
-
 fn main() {
     let terminal = terminal::stdout();
     let mut lock = terminal.lock_mut().unwrap();
 
     let args = Args::parse();
 
+    // default is terminal width
     let width = args.width.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().0 - 2});
+    // default is terminal height
     let height = args.height.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().1 - 3});
+    // default is chosen so it takes the snake 4 seconds across the board 
     let freq = args.freq.unwrap_or_else(|| -> u64 {(std::cmp::min(width, height) / 4) as u64});
 
+    let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_height(height) * board_width(width));
+    let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
+    let mut direction = Direction::Right;
+    let mut food: (usize, usize);
 
     term_setup(&mut lock).unwrap();
 
-    let board_size = board_height(height) * board_width(width);
-    let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_size);
-
-    let mut food: (usize, usize);
-    let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
-    let mut direction = Direction::Right;
-
+    // only draw border once
     draw_border(&mut board, width, height);
     term_display(&mut lock, board.as_slice()).unwrap();
     
+    // draw snake and food the first time
     snake.push_back((height / 2 + 1, width / 2 + 1));
     draw_snake(&mut board, width, &snake);
     food = random_free_spot(&board, width);
     draw_food(&mut lock, &mut board, width, &food).unwrap();
 
     loop {
-        // user input
+        // input
         if let Some(user_input) = term_user_input(&lock, (1000 * 1000 / freq) as u64) {
             direction = match (user_input, direction) {
                 (UserInput::Right, Direction::Right) => Direction::Down,
@@ -250,15 +253,12 @@ fn main() {
             };
         }
 
-        // step
+        // step: redraw snake and food if eaten
         let (eaten, crashed) = advance_snake(&mut lock, &mut board, width, &mut snake, &direction);
         if eaten {
             food = random_free_spot(&board, width);
             draw_food(&mut lock, &mut board, width, &food).unwrap();
         }
-
-        // display
-        // term_display(&mut lock, board.as_slice()).unwrap();
 
         if crashed {
             break;
