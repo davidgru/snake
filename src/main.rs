@@ -91,8 +91,10 @@ fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: 
         let new_head_h = (old_h as i32 + direction.velocity().0) as usize;
         let new_head_w = (old_w as i32 + direction.velocity().1) as usize;
 
+        // advance
         snake.push_front((new_head_h, new_head_w));
 
+        // check for collision
         let out = match board[new_head_h * board_width(width) + new_head_w] {
             FOOD => (true, false),
             BORDER => (false, true),
@@ -100,13 +102,14 @@ fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: 
             EMPTY => (false, false),
             _ => panic!("Impossible")
         };
-
         
+        // write new head
         terminal.write_cell(HEAD, new_head_w, new_head_h);
         terminal.write_cell(BODY, old_w, old_h);
-
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
         board[old_h * board_width(width) + old_w] = BODY;
+
+        // remove tail if not eaten food
         if !out.0 {
             if let Some((h, w)) = snake.pop_back() {
                 terminal.write_cell(EMPTY, w, h);
@@ -138,9 +141,8 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
 
 fn main() {
 
-    let terminal = term::Terminal::new();
-
     let args = Args::parse();
+    let terminal = Terminal::new();
 
     // default is terminal width
     let width = args.width.unwrap_or_else(|| -> usize {terminal.get_size().unwrap().0 - 2});
