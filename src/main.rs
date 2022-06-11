@@ -1,13 +1,14 @@
 extern crate clap;
 extern crate rand;
 
-mod term;
-use term::{Input, Terminal};
-
 use std::collections::LinkedList;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use rand::Rng;
+
+mod term;
+use term::{Input, Terminal};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -170,9 +171,13 @@ fn main() {
 
     terminal.display(board.as_slice());
 
+
+    let update_interval = Duration::from_micros((1000 * 1000) / freq);
+    let mut update_deadline = Instant::now() + update_interval;
+
     loop {
         // input
-        if let Some(user_input) = terminal.user_input((1000 * 1000 / freq) as u64) {
+        if let Some(user_input) = terminal.user_input(&update_deadline) {
             direction = match (user_input, direction) {
                 (Input::Right, Direction::Right) => Direction::Down,
                 (Input::Right, Direction::Down) => Direction::Left,
@@ -185,6 +190,8 @@ fn main() {
                 (Input::Exit, _) => break,
             };
         }
+
+        update_deadline = Instant::now() + update_interval;
 
         // step: redraw snake and food if eaten
         let (eaten, crashed) = advance_snake(&terminal, &mut board, width, &mut snake, &direction);

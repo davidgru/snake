@@ -3,7 +3,6 @@ extern crate terminal;
 use std::io::Write;
 use terminal::{Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 
-use std::time::Duration;
 use std::time::Instant;
 
 #[derive(PartialEq)]
@@ -48,16 +47,13 @@ impl Terminal {
     }
 
     // listen for user input for an interval. return the last entered direction, or exit
-    pub fn user_input(&self, interval_us: u64) -> Option<Input> {
-        let now = Instant::now();
-        let deadline = now + Duration::from_micros(interval_us);
-        
+    pub fn user_input(&self, until: &Instant) -> Option<Input> {
         let lock = self.lock();
 
         let mut code: Option<Input> = None;
         loop {
             let now = Instant::now();
-            if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(deadline - now))) {
+            if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(*until - now))) {
                 code = match key {
                     KeyEvent{code: KeyCode::Left, ..} => {
                         Some(Input::Left)
