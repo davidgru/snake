@@ -1,14 +1,13 @@
 extern crate clap;
 extern crate rand;
-extern crate terminal;
+
+mod term;
+use term::{Input, Terminal};
 
 use std::collections::LinkedList;
-use std::io::Write;
-use std::time::{Duration, Instant};
 
 use clap::Parser;
 use rand::Rng;
-use terminal::{error, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -26,11 +25,6 @@ const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
-
-#[derive(PartialEq)]
-enum UserInput {
-    Left, Right, Exit
-}
 
 enum Direction {
     Right, Up, Left, Down
@@ -86,13 +80,13 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
     }
 }
 
-fn draw_food<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, food: &(usize, usize)) -> error::Result<()> {
+fn draw_food(terminal: &Terminal, board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
     board[food.0 * board_width(width) + food.1] = FOOD;
-    term_write_cell(lock, FOOD, food.1, food.0)
+    terminal.write_cell(FOOD, food.1, food.0);
 }
 
 // move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
-fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
+fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
     if let Some(&(old_h, old_w)) = snake.front() {
         let new_head_h = (old_h as i32 + direction.velocity().0) as usize;
         let new_head_w = (old_w as i32 + direction.velocity().1) as usize;
@@ -107,14 +101,15 @@ fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board:
             _ => panic!("Impossible")
         };
 
-        term_write_cell(lock, HEAD, new_head_w, new_head_h).unwrap();
-        term_write_cell(lock, BODY, old_w, old_h).unwrap();
+        
+        terminal.write_cell(HEAD, new_head_w, new_head_h);
+        terminal.write_cell(BODY, old_w, old_h);
 
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
         board[old_h * board_width(width) + old_w] = BODY;
         if !out.0 {
             if let Some((h, w)) = snake.pop_back() {
-                term_write_cell(lock, EMPTY, w, h).unwrap();
+                terminal.write_cell(EMPTY, w, h);
                 board[h * board_width(width) + w] = EMPTY;
             }
         }
@@ -141,84 +136,16 @@ fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
     panic!("How did I get here?");
 }
 
-// listen for user input for an interval. return the last entered direction, or exit
-fn term_user_input<T: std::io::Write>(lock: &terminal::TerminalLock<T>, interval_us: u64) -> Option<UserInput> {
-    let now = Instant::now();
-    let deadline = now + Duration::from_micros(interval_us);
-    
-    let mut code: Option<UserInput> = None;
-    loop {
-        let now = Instant::now();
-        if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(deadline - now))) {
-            code = match key {
-                KeyEvent{code: KeyCode::Left, ..} => {
-                    Some(UserInput::Left)
-                },
-                KeyEvent{code: KeyCode::Right, ..} => {
-                    Some(UserInput::Right)
-                },
-                KeyEvent{code: KeyCode::Char('q'), ..} => {
-                    Some(UserInput::Exit)
-                },
-                _ => code
-            };
-            if code == Some(UserInput::Exit) {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-    code
-}
-
-// enter new screen and hide cursor
-fn term_setup<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
-    lock.batch(Action::EnterAlternateScreen)?;
-    lock.batch(Action::EnableRawMode)?;
-    lock.batch(Action::HideCursor)?;
-    lock.flush_batch()
-}
-
-fn term_get_size<T: std::io::Write>(lock: &terminal::TerminalLock<T>) -> Option<(usize, usize)> {
-    if let Ok(Retrieved::TerminalSize(w, h)) = lock.get(Value::TerminalSize) {
-        Some((w as usize, h as usize))
-    } else {
-        None
-    }
-}
-
-fn term_display<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &[u8]) -> error::Result<()> {
-    lock.act(Action::ClearTerminal(Clear::All))?;
-    lock.act(Action::MoveCursorTo(0, 0))?;
-    lock.write(board)?;
-    lock.flush_batch()
-}
-
-fn term_write_cell<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, symbol: u8, x: usize, h: usize) -> error::Result<()> {
-    lock.batch(Action::MoveCursorTo(x as u16, h as u16))?;
-    lock.write(&[symbol])?;
-    lock.flush_batch()
-}
-
-// show cursor again and return to old screen
-fn term_clean<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>) -> error::Result<()> {
-    lock.batch(Action::ShowCursor)?;
-    lock.batch(Action::DisableRawMode)?;
-    lock.batch(Action::LeaveAlternateScreen)?;
-    lock.flush_batch()
-}
-
 fn main() {
-    let terminal = terminal::stdout();
-    let mut lock = terminal.lock_mut().unwrap();
+
+    let terminal = term::Terminal::new();
 
     let args = Args::parse();
 
     // default is terminal width
-    let width = args.width.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().0 - 2});
+    let width = args.width.unwrap_or_else(|| -> usize {terminal.get_size().unwrap().0 - 2});
     // default is terminal height
-    let height = args.height.unwrap_or_else(|| -> usize {term_get_size(&lock).unwrap().1 - 3});
+    let height = args.height.unwrap_or_else(|| -> usize {terminal.get_size().unwrap().1 - 3});
     // default is chosen so it takes the snake 4 seconds across the board 
     let freq = args.freq.unwrap_or_else(|| -> u64 {(std::cmp::min(width, height) / 4) as u64});
 
@@ -227,39 +154,41 @@ fn main() {
     let mut direction = Direction::Right;
     let mut food: (usize, usize);
 
-    term_setup(&mut lock).unwrap();
+
+    terminal.setup();
 
     // only draw border once
     draw_border(&mut board, width, height);
-    term_display(&mut lock, board.as_slice()).unwrap();
     
     // draw snake and food the first time
     snake.push_back((height / 2 + 1, width / 2 + 1));
     draw_snake(&mut board, width, &snake);
     food = random_free_spot(&board, width);
-    draw_food(&mut lock, &mut board, width, &food).unwrap();
+    draw_food(&terminal, &mut board, width, &food);
+
+    terminal.display(board.as_slice());
 
     loop {
         // input
-        if let Some(user_input) = term_user_input(&lock, (1000 * 1000 / freq) as u64) {
+        if let Some(user_input) = terminal.user_input((1000 * 1000 / freq) as u64) {
             direction = match (user_input, direction) {
-                (UserInput::Right, Direction::Right) => Direction::Down,
-                (UserInput::Right, Direction::Down) => Direction::Left,
-                (UserInput::Right, Direction::Left) => Direction::Up,
-                (UserInput::Right, Direction::Up) => Direction::Right,
-                (UserInput::Left, Direction::Right) => Direction::Up,
-                (UserInput::Left, Direction::Up) => Direction::Left,
-                (UserInput::Left, Direction::Left) => Direction::Down,
-                (UserInput::Left, Direction::Down) => Direction::Right,
-                (UserInput::Exit, _) => break,
+                (Input::Right, Direction::Right) => Direction::Down,
+                (Input::Right, Direction::Down) => Direction::Left,
+                (Input::Right, Direction::Left) => Direction::Up,
+                (Input::Right, Direction::Up) => Direction::Right,
+                (Input::Left, Direction::Right) => Direction::Up,
+                (Input::Left, Direction::Up) => Direction::Left,
+                (Input::Left, Direction::Left) => Direction::Down,
+                (Input::Left, Direction::Down) => Direction::Right,
+                (Input::Exit, _) => break,
             };
         }
 
         // step: redraw snake and food if eaten
-        let (eaten, crashed) = advance_snake(&mut lock, &mut board, width, &mut snake, &direction);
+        let (eaten, crashed) = advance_snake(&terminal, &mut board, width, &mut snake, &direction);
         if eaten {
             food = random_free_spot(&board, width);
-            draw_food(&mut lock, &mut board, width, &food).unwrap();
+            draw_food(&terminal, &mut board, width, &food);
         }
 
         if crashed {
@@ -267,5 +196,5 @@ fn main() {
         }
     }
 
-    term_clean(&mut lock).unwrap();
+    terminal.clean();
 }
