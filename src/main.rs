@@ -87,17 +87,15 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
 }
 
 fn draw_food<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, food: &(usize, usize)) -> error::Result<()> {
-    lock.batch(Action::MoveCursorTo(food.1 as u16, food.0 as u16))?;
-    lock.write(&[FOOD])?;
     board[food.0 * board_width(width) + food.1] = FOOD;
-    lock.flush_batch()
+    term_write_cell(lock, FOOD, food.1, food.0)
 }
 
 // move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
 fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
-    if let Some(&(h, w)) = snake.front() {
-        let new_head_h = (h as i32 + direction.velocity().0) as usize;
-        let new_head_w = (w as i32 + direction.velocity().1) as usize;
+    if let Some(&(old_h, old_w)) = snake.front() {
+        let new_head_h = (old_h as i32 + direction.velocity().0) as usize;
+        let new_head_w = (old_w as i32 + direction.velocity().1) as usize;
 
         snake.push_front((new_head_h, new_head_w));
 
@@ -108,20 +106,18 @@ fn advance_snake<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board:
             EMPTY => (false, false),
             _ => panic!("Impossible")
         };
-        lock.batch(Action::MoveCursorTo(new_head_w as u16, new_head_h as u16)).unwrap();
-        lock.write(&[HEAD]).unwrap();
-        lock.batch(Action::MoveCursorTo(w as u16, h as u16)).unwrap();
-        lock.write(&[BODY]).unwrap();
+
+        term_write_cell(lock, HEAD, new_head_w, new_head_h).unwrap();
+        term_write_cell(lock, BODY, old_w, old_h).unwrap();
+
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
-        board[h * board_width(width) + w] = BODY;
+        board[old_h * board_width(width) + old_w] = BODY;
         if !out.0 {
             if let Some((h, w)) = snake.pop_back() {
-                lock.batch(Action::MoveCursorTo(w as u16, h as u16)).unwrap();
-                lock.write(&[EMPTY]).unwrap();
+                term_write_cell(lock, EMPTY, w, h).unwrap();
                 board[h * board_width(width) + w] = EMPTY;
             }
         }
-        lock.flush_batch().unwrap();
         out
     } else {
         panic!("Snake has no head!");
@@ -196,6 +192,12 @@ fn term_display<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, board: 
     lock.act(Action::ClearTerminal(Clear::All))?;
     lock.act(Action::MoveCursorTo(0, 0))?;
     lock.write(board)?;
+    lock.flush_batch()
+}
+
+fn term_write_cell<T: std::io::Write>(lock: &mut terminal::TerminalLock<T>, symbol: u8, x: usize, h: usize) -> error::Result<()> {
+    lock.batch(Action::MoveCursorTo(x as u16, h as u16))?;
+    lock.write(&[symbol])?;
     lock.flush_batch()
 }
 
