@@ -95,6 +95,7 @@ impl Terminal {
     // show cursor again and return to old screen
     pub fn clean(&self) {
         let mut lock = self.lock();
+        lock.batch(Action::MoveCursorTo(0, 0)).unwrap();
         lock.batch(Action::ShowCursor).unwrap();
         lock.batch(Action::DisableRawMode).unwrap();
         lock.batch(Action::LeaveAlternateScreen).unwrap();
