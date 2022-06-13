@@ -5,7 +5,7 @@ use terminal::{Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 
 use std::time::Instant;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum Input {
     Left, Right, Exit
 }
@@ -46,34 +46,33 @@ impl Terminal {
         }
     }
 
-    // listen for user input for an interval. return the last entered direction, or exit
+    // return entered keys until exit is entered or specified deadline is met
     pub fn user_input(&self, until: &Instant) -> Option<Input> {
         let lock = self.lock();
 
-        let mut code: Option<Input> = None;
+        let mut num_left = 0;
+        let mut num_right = 0;
+
         loop {
             let now = Instant::now();
             if let Ok(Retrieved::Event(Some(Event::Key(key)))) = lock.get(Value::Event(Some(*until - now))) {
-                code = match key {
+                match key {
                     KeyEvent{code: KeyCode::Left, ..} => {
-                        Some(Input::Left)
+                        num_left += 1;
                     },
                     KeyEvent{code: KeyCode::Right, ..} => {
-                        Some(Input::Right)
+                        num_right += 1;
                     },
                     KeyEvent{code: KeyCode::Char('q'), ..} => {
-                        Some(Input::Exit)
+                        return Some(Input::Exit);
                     },
-                    _ => code
+                    _ => continue
                 };
-                if code == Some(Input::Exit) {
-                    break;
-                }
             } else {
                 break;
             }
         }
-        code
+        return if num_left > num_right {Some(Input::Left)} else if num_left < num_right {Some(Input::Right)} else {None}
     }
 
     // write board to screen

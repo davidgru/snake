@@ -27,6 +27,8 @@ const FOOD: u8 = 'F' as u8;
 const HEAD: u8 = '@' as u8;
 const BODY: u8 = 'B' as u8;
 
+
+#[derive(Clone, Copy)]
 enum Direction {
     Right, Up, Left, Down
 }
@@ -176,9 +178,9 @@ fn main() {
     let mut update_deadline = Instant::now() + update_interval;
 
     loop {
-        // input
-        if let Some(user_input) = terminal.user_input(&update_deadline) {
-            direction = match (user_input, direction) {
+        // user input
+        if let Some(key) = terminal.user_input(&update_deadline) {
+            direction = match (key, direction) {
                 (Input::Right, Direction::Right) => Direction::Down,
                 (Input::Right, Direction::Down) => Direction::Left,
                 (Input::Right, Direction::Left) => Direction::Up,
@@ -187,7 +189,7 @@ fn main() {
                 (Input::Left, Direction::Up) => Direction::Left,
                 (Input::Left, Direction::Left) => Direction::Down,
                 (Input::Left, Direction::Down) => Direction::Right,
-                (Input::Exit, _) => break,
+                (Input::Exit, _) => break
             };
         }
 
@@ -199,9 +201,8 @@ fn main() {
             food = random_free_spot(&board, width);
             draw_food(&terminal, &mut board, width, &food);
         }
-
         if crashed {
-            break;
+            break
         }
     }
 
