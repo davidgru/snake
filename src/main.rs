@@ -21,6 +21,7 @@ struct Args {
 }
 
 // Display constants
+
 const EMPTY: u8 = ' ' as u8;
 const BORDER: u8 = '#' as u8;
 const FOOD: u8 = 'F' as u8;
@@ -179,7 +180,7 @@ fn main() {
 
     loop {
         // user input
-        if let Some(key) = terminal.user_input(&update_deadline) {
+        if let Ok(Some(key)) = terminal.user_input(&update_deadline) {
             direction = match (key, direction) {
                 (Input::Right, Direction::Right) => Direction::Down,
                 (Input::Right, Direction::Down) => Direction::Left,

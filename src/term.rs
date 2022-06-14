@@ -1,7 +1,7 @@
 extern crate terminal;
 
 use std::io::Write;
-use terminal::{Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
+use terminal::{error, TerminalLock, Clear, Action, Value, Retrieved, Event, KeyCode, KeyEvent};
 
 use std::time::Instant;
 
@@ -24,31 +24,31 @@ impl Terminal {
         }
     }
 
-    fn lock(&self) -> terminal::TerminalLock<std::io::Stdout> {
-        self.terminal.lock_mut().unwrap()
+    fn lock(&self) -> error::Result<TerminalLock<std::io::Stdout>> {
+        self.terminal.lock_mut()
     }
 
     // enter new screen and hide cursor
-    pub fn setup(&self) {
-        let mut lock = self.lock();
-        lock.batch(Action::EnterAlternateScreen).unwrap();
-        lock.batch(Action::EnableRawMode).unwrap();
-        lock.batch(Action::HideCursor).unwrap();
-        lock.flush_batch().unwrap();
+    pub fn setup(&self) -> error::Result<()> {
+        let mut lock = self.lock()?;
+        lock.batch(Action::EnterAlternateScreen)?;
+        lock.batch(Action::EnableRawMode)?;
+        lock.batch(Action::HideCursor)?;
+        lock.flush_batch()
     }
 
     // return terminal size in (width, height)
-    pub fn get_size(&self) -> Option<(usize, usize)> {
-        if let Ok(Retrieved::TerminalSize(w, h)) = self.lock().get(Value::TerminalSize) {
-            Some((w as usize, h as usize))
+    pub fn get_size(&self) -> error::Result<(usize, usize)> {
+        if let Ok(Retrieved::TerminalSize(w, h)) = self.lock()?.get(Value::TerminalSize) {
+            Ok((w as usize, h as usize))
         } else {
-            None
+            Err(error::ErrorKind::ActionNotSupported(std::string::String::from("")))
         }
     }
 
     // return entered keys until exit is entered or specified deadline is met
-    pub fn user_input(&self, until: &Instant) -> Option<Input> {
-        let lock = self.lock();
+    pub fn user_input(&self, until: &Instant) -> error::Result<Option<Input>> {
+        let lock = self.lock()?;
 
         let mut num_left = 0;
         let mut num_right = 0;
@@ -64,7 +64,7 @@ impl Terminal {
                         num_right += 1;
                     },
                     KeyEvent{code: KeyCode::Char('q'), ..} => {
-                        return Some(Input::Exit);
+                        return Ok(Some(Input::Exit));
                     },
                     _ => continue
                 };
@@ -72,34 +72,34 @@ impl Terminal {
                 break;
             }
         }
-        return if num_left > num_right {Some(Input::Left)} else if num_left < num_right {Some(Input::Right)} else {None}
+        return Ok(if num_left > num_right {Some(Input::Left)} else if num_left < num_right {Some(Input::Right)} else {None})
     }
 
     // write board to screen
-    pub fn display(&self, board: &[u8]) {
-        let mut lock = self.lock();
-        lock.act(Action::ClearTerminal(Clear::All)).unwrap();
-        lock.act(Action::MoveCursorTo(0, 0)).unwrap();
-        lock.write(board).unwrap();
-        lock.flush_batch().unwrap()
+    pub fn display(&self, board: &[u8]) -> error::Result<()> {
+        let mut lock = self.lock()?;
+        lock.act(Action::ClearTerminal(Clear::All))?;
+        lock.act(Action::MoveCursorTo(0, 0))?;
+        lock.write(board)?;
+        lock.flush_batch()
     }
 
     // rewrite a single cell
-    pub fn write_cell(&self, symbol: u8, x: usize, h: usize) {
-        let mut lock = self.lock();
-        lock.batch(Action::MoveCursorTo(x as u16, h as u16)).unwrap();
-        lock.write(&[symbol]).unwrap();
-        lock.flush_batch().unwrap();
+    pub fn write_cell(&self, symbol: u8, x: usize, h: usize) -> error::Result<()> {
+        let mut lock = self.lock()?;
+        lock.batch(Action::MoveCursorTo(x as u16, h as u16))?;
+        lock.write(&[symbol])?;
+        lock.flush_batch()
     }
 
     // show cursor again and return to old screen
-    pub fn clean(&self) {
-        let mut lock = self.lock();
-        lock.batch(Action::MoveCursorTo(0, 0)).unwrap();
-        lock.batch(Action::ShowCursor).unwrap();
-        lock.batch(Action::DisableRawMode).unwrap();
-        lock.batch(Action::LeaveAlternateScreen).unwrap();
-        lock.flush_batch().unwrap()
+    pub fn clean(&self) -> error::Result<()> {
+        let mut lock = self.lock()?;
+        lock.batch(Action::MoveCursorTo(0, 0))?;
+        lock.batch(Action::ShowCursor)?;
+        lock.batch(Action::DisableRawMode)?;
+        lock.batch(Action::LeaveAlternateScreen)?;
+        lock.flush_batch()
     }
 
 }
