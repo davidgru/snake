@@ -3,6 +3,7 @@ extern crate rand;
 
 use std::collections::LinkedList;
 use std::time::{Duration, Instant};
+use std::cmp::{max, min};
 
 use clap::Parser;
 use rand::Rng;
@@ -86,7 +87,7 @@ fn draw_snake(board: &mut Vec<u8>, width: usize, snake: &LinkedList<(usize, usiz
 
 fn draw_food(terminal: &Terminal, board: &mut Vec<u8>, width: usize, food: &(usize, usize)) {
     board[food.0 * board_width(width) + food.1] = FOOD;
-    terminal.write_cell(FOOD, food.1, food.0);
+    terminal.write_cell(FOOD, food.1, food.0).unwrap();
 }
 
 // move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
@@ -108,15 +109,15 @@ fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: 
         };
         
         // write new head
-        terminal.write_cell(HEAD, new_head_w, new_head_h);
-        terminal.write_cell(BODY, old_w, old_h);
+        terminal.write_cell(HEAD, new_head_w, new_head_h).unwrap();
+        terminal.write_cell(BODY, old_w, old_h).unwrap();
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
         board[old_h * board_width(width) + old_w] = BODY;
 
         // remove tail if not eaten food
         if !out.0 {
             if let Some((h, w)) = snake.pop_back() {
-                terminal.write_cell(EMPTY, w, h);
+                terminal.write_cell(EMPTY, w, h).unwrap();
                 board[h * board_width(width) + w] = EMPTY;
             }
         }
@@ -127,33 +128,44 @@ fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: 
 }
 
 // find random free spot on the board in O(n) guaranteed
-fn random_free_spot(board: &Vec<u8>, width: usize) -> (usize, usize) {
+fn random_free_spot(board: &Vec<u8>, width: usize) -> Option<(usize, usize)> {
     let num_free = board.into_iter().filter(|c| -> bool {**c == EMPTY}).count();
+    if num_free == 0 {
+        return None;
+    }
     let nth_free_i = rand::thread_rng().gen_range(0, num_free);
     let mut free_cnt = 0;
     for i in 0..board.len() {
         if board[i] == EMPTY {
             if free_cnt == nth_free_i {
-                return (i / board_width(width), i % board_width(width))
+                return Some((i / board_width(width), i % board_width(width)))
             } else {
                 free_cnt += 1;
             }
         }
     }
-    panic!("How did I get here?");
+    None
+}
+
+fn quit(term: &Terminal) -> ! {
+    term.clean().unwrap();
+    std::process::exit(0);
 }
 
 fn main() {
 
     let args = Args::parse();
     let terminal = Terminal::new();
+    
+    // default is terminal width / height
+    let default_width = || -> usize {terminal.get_size().unwrap().0 - 2};
+    let default_height = || -> usize {terminal.get_size().unwrap().1 - 3};
 
-    // default is terminal width
-    let width = args.width.unwrap_or_else(|| -> usize {terminal.get_size().unwrap().0 - 2});
-    // default is terminal height
-    let height = args.height.unwrap_or_else(|| -> usize {terminal.get_size().unwrap().1 - 3});
+    let width = args.width.unwrap_or_else(default_width);
+    let height = args.height.unwrap_or_else(default_height);
+    
     // default is chosen so it takes the snake 4 seconds across the board 
-    let freq = args.freq.unwrap_or_else(|| -> u64 {(std::cmp::min(width, height) / 4) as u64});
+    let freq = args.freq.unwrap_or(max(1, (min(width, height) / 4) as u64));
 
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_height(height) * board_width(width));
     let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
@@ -161,7 +173,7 @@ fn main() {
     let mut food: (usize, usize);
 
 
-    terminal.setup();
+    terminal.setup().unwrap();
 
     // only draw border once
     draw_border(&mut board, width, height);
@@ -169,10 +181,14 @@ fn main() {
     // draw snake and food the first time
     snake.push_back((height / 2 + 1, width / 2 + 1));
     draw_snake(&mut board, width, &snake);
-    food = random_free_spot(&board, width);
+    food = match random_free_spot(&board, width) {
+        Some(food) => food,
+        None => quit(&terminal)
+    };
+
     draw_food(&terminal, &mut board, width, &food);
 
-    terminal.display(board.as_slice());
+    terminal.display(board.as_slice()).unwrap();
 
 
     let update_interval = Duration::from_micros((1000 * 1000) / freq);
@@ -190,7 +206,7 @@ fn main() {
                 (Input::Left, Direction::Up) => Direction::Left,
                 (Input::Left, Direction::Left) => Direction::Down,
                 (Input::Left, Direction::Down) => Direction::Right,
-                (Input::Exit, _) => break
+                (Input::Exit, _) => quit(&terminal)
             };
         }
 
@@ -199,13 +215,15 @@ fn main() {
         // step: redraw snake and food if eaten
         let (eaten, crashed) = advance_snake(&terminal, &mut board, width, &mut snake, &direction);
         if eaten {
-            food = random_free_spot(&board, width);
+            food = match random_free_spot(&board, width) {
+                Some(food) => food,
+                None => quit(&terminal)
+            };
             draw_food(&terminal, &mut board, width, &food);
         }
         if crashed {
-            break
+            quit(&terminal);
         }
     }
 
-    terminal.clean();
 }
