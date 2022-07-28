@@ -18,7 +18,11 @@ struct Args {
     #[clap(short = 'h', long = "height", help = "The height of the board (default is terminal height)")]
     height: Option<usize>,
     #[clap(short = 'f', long = "frequency", help = "The amount of steps the snake makes per second")]
-    freq: Option<u64>
+    freq: Option<u64>,
+    #[clap(short = 's', long = "start_length", help = "The length the snake starts with")]
+    start_length: Option<usize>,
+    #[clap(short = 'r', long = "reward", help = "The length the snake gains from eating food")]
+    reward: Option<usize>,
 }
 
 // Display constants
@@ -91,7 +95,7 @@ fn draw_food(terminal: &Terminal, board: &mut Vec<u8>, width: usize, food: &(usi
 }
 
 // move snake in direction and update board. return ({crashed into wall or myself}, {eaten food})
-fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction) -> (bool, bool) {
+fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: &mut LinkedList<(usize, usize)>, direction: &Direction, target_length: &mut usize, reward: usize) -> (bool, bool) {
     if let Some(&(old_h, old_w)) = snake.front() {
         let new_head_h = (old_h as i32 + direction.velocity().0) as usize;
         let new_head_w = (old_w as i32 + direction.velocity().1) as usize;
@@ -114,8 +118,12 @@ fn advance_snake(terminal: &Terminal, board: &mut Vec<u8>, width: usize, snake: 
         board[new_head_h * board_width(width) + new_head_w] = HEAD;
         board[old_h * board_width(width) + old_w] = BODY;
 
-        // remove tail if not eaten food
-        if !out.0 {
+        if out.0 { // eaten food
+            *target_length += reward;
+        }
+
+        // remove tail if snake length is as big as target_length
+        if snake.len() > *target_length {
             if let Some((h, w)) = snake.pop_back() {
                 terminal.write_cell(EMPTY, w, h).unwrap();
                 board[h * board_width(width) + w] = EMPTY;
@@ -166,8 +174,11 @@ fn main() {
     
     // default is chosen so it takes the snake 4 seconds across the board 
     let freq = args.freq.unwrap_or(max(1, (min(width, height) / 4) as u64));
+    let start_length = args.start_length.unwrap_or(5);
+    let reward = args.reward.unwrap_or(5);
 
     let mut board : Vec<u8> = std::vec::Vec::with_capacity(board_height(height) * board_width(width));
+    let mut target_length = 1 + start_length;
     let mut snake: LinkedList<(usize, usize)> = LinkedList::new();
     let mut direction = Direction::Right;
     let mut food: (usize, usize);
@@ -223,7 +234,7 @@ fn main() {
         update_deadline = Instant::now() + update_interval;
 
         // step: redraw snake and food if eaten
-        let (eaten, crashed) = advance_snake(&terminal, &mut board, width, &mut snake, &direction);
+        let (eaten, crashed) = advance_snake(&terminal, &mut board, width, &mut snake, &direction, &mut target_length, reward);
         if eaten {
             food = match random_free_spot(&board, width) {
                 Some(food) => food,
