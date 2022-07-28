@@ -194,6 +194,8 @@ fn main() {
     let update_interval = Duration::from_micros((1000 * 1000) / freq);
     let mut update_deadline = Instant::now() + update_interval;
 
+    let mut pause = false;
+
     loop {
         // user input
         if let Ok(Some(key)) = terminal.user_input(&update_deadline) {
@@ -206,8 +208,16 @@ fn main() {
                 (Input::Left, Direction::Up) => Direction::Left,
                 (Input::Left, Direction::Left) => Direction::Down,
                 (Input::Left, Direction::Down) => Direction::Right,
-                (Input::Exit, _) => quit(&terminal)
+                (Input::Exit, _) => quit(&terminal),
+                (Input::Pause, _) => {
+                    pause = !pause;
+                    continue;
+                }
             };
+        }
+
+        if pause {
+            continue;
         }
 
         update_deadline = Instant::now() + update_interval;

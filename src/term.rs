@@ -7,7 +7,7 @@ use std::time::Instant;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Input {
-    Left, Right, Exit
+    Left, Right, Exit, Pause
 }
 
 
@@ -66,6 +66,9 @@ impl Terminal {
                     KeyEvent{code: KeyCode::Char('q'), ..} => {
                         return Ok(Some(Input::Exit));
                     },
+                    KeyEvent{code: KeyCode::Char('p'), ..} => {
+                        return Ok(Some(Input::Pause));
+                    }
                     _ => continue
                 };
             } else {
